@@ -1,5 +1,5 @@
 # Multiplatform Utilities
-Convenient multiplatform utilities for C; including multithreading, mutex locks, millisecond sleep and high resolution milli/microsecond timestamp support.
+Convenient multiplatform utilities for C; including multithreading, mutex locks, read/write locks, millisecond sleep and high resolution milli/microsecond timestamp support.
 
 ### Available Usage
 [Threading & Mutex](src/thread.c)...
@@ -11,6 +11,12 @@ int mutex_init(Mutex *mutex);
 int mutex_lock(Mutex *mutex);
 int mutex_unlock(Mutex *mutex);
 int mutex_end(Mutex *mutex);
+int rwlock_init(RWLock *rwlock);
+int rwlock_rdlock(RWLock *rwlock);
+int rwlock_wrlock(RWLock *rwlock);
+int rwlock_rdunlock(RWLock *rwlock);
+int rwlock_wrunlock(RWLock *rwlock);
+int rwlock_end(RWLock *rwlock);
 ```
 
 [High Resolution Time & Sleep](src/time.c)...

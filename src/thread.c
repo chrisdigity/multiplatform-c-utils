@@ -15,7 +15,8 @@
  * NOTES:
  * - Support functions requiring a Mutex or ThreadID type parameter
  *   MUST be passed as pointers.
- * - A Mutex can be statically initialized using MUTEX_INITIALIZER.
+ * - A Mutex can be statically initialized using MUTEX_INITIALIZER,
+ *   RWLOCK can be statically initialized using RWLOCK_INITIALIZER.
  * - A function designed to run in a new thread SHALL be of format:
  *     // If multiple arguments are required, use a struct.
  *     Threaded thread_functionname(void *arg)
@@ -23,6 +24,16 @@
  *        ... thread routine ...
  *        return Treturn;
  *     }
+ *
+ * CHANGELOG:
+ * Rev.1   2020-02-20
+ *   Initial Thread and Mutex implementation.
+ * Rev.2   2020-04-30
+ *   Added thread wait function for multiple threads.
+ *   Added manual initialization method for Mutex.
+ *   Initial Github repository release.
+ * Rev.3   2020-05-31
+ *   Added RWLock for shared read and exclusive write protection.
  *
  * ****************************************************************/
 
@@ -43,7 +54,9 @@
 #define Threaded           DWORD
 #define ThreadID           DWORD
 #define Treturn            0
+#define RWLock             SRWLOCK
 #define MUTEX_INITIALIZER  {0}
+#define RWLOCK_INITIALIZER SRWLOCK_INIT
 
 /* There is no static initialization method for a CRITICAL_SECTION.
  * Therefore, on Windows, Mutex holds an initialization variable
@@ -146,6 +159,51 @@ int mutex_end(Mutex *mutex)
    return 0;
 }
 
+/* Initialize a Windows read/write lock. Return 0. */
+int rwlock_init(RWLock *rwlock)
+{
+   InitializeSRWLock(rwlock);
+
+   return 0;
+}
+
+/* Acquire a read lock (shared mode). Return 0. */
+int rwlock_rdlock(RWLock *rwlock)
+{
+   AcquireSRWLockShared(rwlock);
+
+   return 0;
+}
+
+/* Acquire a write lock (exclusive mode). Return 0. */
+int rwlock_wrlock(RWLock *rwlock)
+{
+   AcquireSRWLockExclusive(rwlock);
+
+   return 0;
+}
+
+/* Release a read lock. Return 0. */
+int rwlock_rdunlock(RWLock *rwlock)
+{
+   ReleaseSRWLockShared(rwlock);
+
+   return 0;
+}
+
+/* Release a write lock. Return 0. */
+int rwlock_wrunlock(RWLock *rwlock)
+{
+   ReleaseSRWLockExclusive(rwlock);
+
+   return 0;
+}
+
+/* SRW locks do not need to be explicitly destroyed. Therefore,
+ * this function serves only as a placeholder for multiplatform
+ * compatibility, always returning 0. */
+int rwlock_end(RWLock *rwlock) { (void *) rwlock; return 0; }
+
 
 #else /* end Windows */
 /*********************/
@@ -159,7 +217,9 @@ int mutex_end(Mutex *mutex)
 #define Treturn               NULL
 #define ThreadID              pthread_t
 #define Mutex                 pthread_mutex_t
+#define RWLock                pthread_rwlock_t
 #define MUTEX_INITIALIZER     PTHREAD_MUTEX_INITIALIZER
+#define RWLOCK_INITIALIZER    PTHREAD_RWLOCK_INITIALIZER
 
 /* Create a new thread on UNIX and store it's thread id.
  * Return 0 on success, else error code. */
@@ -206,6 +266,42 @@ int mutex_unlock(Mutex *mutex)
 int mutex_end(Mutex *mutex)
 {
    return pthread_mutex_destroy(mutex);
+}
+
+/* Initialize a Windows read/write lock. Return 0. */
+int rwlock_init(RWLock *rwlock)
+{
+   return pthread_rwlock_init(rwlock, NULL);
+}
+
+/* Acquire a shared read lock. Return 0. */
+int rwlock_rdlock(RWLock *rwlock)
+{
+   return pthread_rwlock_rdlock(rwlock);
+}
+
+/* Acquire an exclusive write lock. Return 0. */
+int rwlock_wrlock(RWLock *rwlock)
+{
+   return pthread_rwlock_wrlock(rwlock);
+}
+
+/* Release a read lock. Return 0. */
+int rwlock_rdunlock(RWLock *rwlock)
+{
+   return pthread_rwlock_unlock(rwlock);
+}
+
+/* Release a write lock. Return 0. */
+int rwlock_wrunlock(RWLock *rwlock)
+{
+   return pthread_rwlock_unlock(rwlock);
+}
+
+/* Destroy a read/write lock. Returns 0, else error code. */
+int rwlock_end(RWLock *rwlock)
+{
+   return pthread_rwlock_destroy(rwlock);
 }
 
 
