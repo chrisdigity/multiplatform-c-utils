@@ -1,14 +1,27 @@
 /* ****************************************************************
  * Test multiplatform utilities.
- *  - mptest.c (1 May 2020)
+ *  - mputils.c (1 May 2020)
  *
+ * Original work Copyright (c) 2020 Zalamanda
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * ****************************************************************
  * Multiplatform utilities:
  * - Millisecond sleep and milli/microsecond high res time stamps
  * - Threading and Mutex locks
  * - Shared read exclusive write locks
  *
  * NOTES:
- * - The "Timing tests w/ subsecond timing comparisons" is known to
+ * - The "Timing tests w/ subsecond timing comparisons" are known to
  *   intermittently fail precision tests. This is presumed (but not
  *   confirmed) to be related to system load during testing.
  *
@@ -22,8 +35,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "../src/thread.c"
-#include "../src/time.c"
+#include "../src/mpthread.h"
+#include "../src/mptime.h"
 
 #define THREADS  1000
 #define ROUNDS   100000
@@ -131,8 +144,8 @@ int main()
    RWLock rwlock;
    RWLock rwlock_static = RWLOCK_INITIALIZER;
    ThreadID threadlist[THREADS];
-   uint64_t mstart, mexpected, mresult;
-   uint64_t ustart, uexpected, uresult;
+   long mstart, mexpected, mresult;
+   long ustart, uexpected, uresult;
    float elapsed, elapsed2;
    time_t begin;
    int i, j, res, min, max, avg, fail;
@@ -151,8 +164,8 @@ int main()
    while(time(NULL) <= begin);
    uexpected = microelapsed(ustart);
    mexpected = millielapsed(mstart);
-   printf("millisync: %dms, ", (int) mexpected - MILLISECONDS);
-   printf("microsync: %dus\n", (int) uexpected - MICROSECONDS);
+   printf("millisync: %dms, ", (int) (mexpected - MILLISECONDS));
+   printf("microsync: %dus\n", (int) (uexpected - MICROSECONDS));
 
    for(i = 1; i < 6; i++) {
       if(i == 5) {

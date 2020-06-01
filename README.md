@@ -1,10 +1,12 @@
 # Multiplatform Utilities
+
 Convenient multiplatform utilities for C; including multithreading, mutex locks, read/write locks, millisecond sleep and high resolution milli/microsecond timestamp support.
 
 ### Available Usage
-[Threading & Mutex](src/thread.c)...
+
+[Threading & Mutex header](src/mpthread.h)...
 ```c
-int thread_create(ThreadID *threadid, void *func, void *arg);
+int thread_create(ThreadID *threadid, Threaded *func, void *arg);
 int thread_wait(ThreadID *threadid);
 int thread_multiwait(ThreadID *tidlist, int len);
 int mutex_init(Mutex *mutex);
@@ -19,22 +21,34 @@ int rwlock_wrunlock(RWLock *rwlock);
 int rwlock_end(RWLock *rwlock);
 ```
 
-[High Resolution Time & Sleep](src/time.c)...
+[High Resolution Time & Sleep header](src/mptime.h)...
 ```c
-void millisleep(uint32_t ms);
-uint64_t milliseconds(void);
-uint64_t microseconds(void);
-uint64_t millielapsed(uint64_t ms); /* via MACRO */
-uint64_t microelapsed(uint64_t ms); /* via MACRO */
+void millisleep(unsigned long ms);
+long milliseconds(void);
+long microseconds(void);
+long millielapsed(long ms);
+long microelapsed(long ms);
 ```
 
 ### Example usage
-The [Multiplatform Utility tests](test/mputilstest.c) file is provided as an example of basic usage and testing, which validates the correct operation of functions (within operating tolerances where applicable).
+
+The [Multiplatform Utilities](tests/mputils.c) test file is provided as an example of basic usage and testing, which validates the correct operation of functions (within operating tolerances where applicable).
 
 #### Self Compilation and Execution:
-Self compilation helper files, [testWIN.bat](testWIN.bat) & [testUNIX.sh](testUNIX.sh), are provided for easy compilation and execution of the [Multiplatform Utility tests](test/mputilstest.c) file.  
-> testWIN.bat; Requires `Microsoft Visual Studio 2017 Community Edition` installed. Tested on x86_64 architecture running Windows 10 Pro v10.0.18362.  
-> testUNIX.sh; Requires the `build-essential` package installed. Tested on x86_64 architecture running Ubuntu 16.04.1.
+
+On Windows...
+> Requires `Microsoft Visual Studio 2017 Community Edition` installed.  
+> Double-click the Windows Makefile [makefile.bat](tests/makefile.bat) to compile and run all `*.c` files in the `tests/` directory.
+
+On Debian/Ubuntu...
+> Requires the `build-essential` package installed.  
+> Open a terminal in the `tests/` directory and run make...
+```sh
+make        # compile all *.c files
+make test   # compile and test all *.c files
+make clean  # cleanup all binaries and compilation files
+```
 
 ### More information
-See individual source files for descriptions of the file, data type structures, compiler MACRO expansions, and function operations.
+
+See individual source files for descriptions of the file, usage notes, changelog, data type structures, compiler MACRO expansions, and function operations.

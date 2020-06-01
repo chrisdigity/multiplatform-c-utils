@@ -1,22 +1,33 @@
 /* ****************************************************************
  * Multiplatform threading and mutex support.
- *  - thread.c (20 February 2020)
+ *  - mpthread.h (20 February 2020)
+ *
+ * Original work Copyright (c) 2020 Zalamanda
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * ****************************************************************
+ * This file is designed as a bridge between platform specific code
+ * already present on most systems.
  *
  * The support functions in this file are based on the pthreads API
  * (POSIX Threads). Functionality is extended to Windows systems by
  * wrapping Windows API routines in functions imitating, as much as
  * reasonably possible, their associated pthreads counterparts.
  *
- * Since the Windows API lacks a static initialization method for a
- * CRITICAL_SECTION, the CRITICAL_SECTION is placed inside a struct
- * with a separate variable to track it's initialization status and
- * initialization will occur during the first mutex_lock() request.
- *
  * NOTES:
- * - Support functions requiring a Mutex or ThreadID type parameter
- *   MUST be passed as pointers.
+ * - Support functions requiring a ThreadID, Mutex or RWLock param,
+ *   SHALL be passed as pointers.
  * - A Mutex can be statically initialized using MUTEX_INITIALIZER,
- *   RWLOCK can be statically initialized using RWLOCK_INITIALIZER.
+ *   RWLock can be statically initialized using RWLOCK_INITIALIZER.
  * - A function designed to run in a new thread SHALL be of format:
  *     // If multiple arguments are required, use a struct.
  *     Threaded thread_functionname(void *arg)
@@ -34,14 +45,14 @@
  *   Initial Github repository release.
  * Rev.3   2020-05-31
  *   Added RWLock for shared read and exclusive write protection.
+ * Rev.4   2020-05-31
+ *   File overhaul and conversion to header file.
+ *   Changed functions to MACRO redefinitions where appropriate.
  *
  * ****************************************************************/
 
-#ifndef _THREAD_C_
-#define _THREAD_C_  /* include guard */
-
-
-#include <stdint.h>
+#ifndef _MP_THREAD_H_
+#define _MP_THREAD_H_  /* include guard */
 
 
 #ifdef _WIN32
@@ -51,24 +62,34 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#define Threaded           DWORD
-#define ThreadID           DWORD
-#define Treturn            0
-#define RWLock             SRWLOCK
-#define MUTEX_INITIALIZER  {0}
-#define RWLOCK_INITIALIZER SRWLOCK_INIT
+/* Windows function redefinitions */
+#define rwlock_free()  0  /* SRWLock need not be explicitly destroyed */
 
-/* There is no static initialization method for a CRITICAL_SECTION.
- * Therefore, on Windows, Mutex holds an initialization variable
- * to indicate the initialization status of the Mutex. */
-typedef struct {
+/* Windows static initializers */
+#define MUTEX_INITIALIZER   {0}
+#define RWLOCK_INITIALIZER  SRWLOCK_INIT
+
+/* Windows datatypes and structs */
+#define ThreadID  DWORD    /* thread identification datatype */
+#define Threaded  DWORD    /* thread execution function datatype */
+#define Treturn   0        /* thread function return value */
+#define RWLock    SRWLOCK  /* shared read / exclusive write lock */
+
+/* A Mutually exclusive lock datatype, utilizing Windows' CRITICAL_SECTION
+ * to more closely imitate pthread's pthread_mutex_t element. Since there
+ * is no static initialization method for a CRITICAL_SECTION, the struct
+ * also holds an initialization variable to indicate the initialization
+ * status of the CRITICAL_SECTION. If static initialization is chosen,
+ * actual initialization will occur during the first call to mutex_lock(). */
+typedef struct _Mutex {
    CRITICAL_SECTION lock;
    volatile unsigned char init;
 } Mutex;
 
-/* Create a new thread on Windows and store it's thread id.
- * Return 0 on success, else error code. */
-int thread_create(ThreadID *threadid, LPTHREAD_START_ROUTINE func, void *arg)
+/* Create a new thread on Windows and store it's thread identifier.
+ * Return 0 on success, else GetLastError(). */
+static inline int
+thread_create(ThreadID *threadid, LPTHREAD_START_ROUTINE func, void *arg)
 {
    if(CreateThread(NULL, 0, func, arg, 0, threadid) == NULL)
       return GetLastError();
@@ -76,9 +97,9 @@ int thread_create(ThreadID *threadid, LPTHREAD_START_ROUTINE func, void *arg)
    return 0;
 }
 
-/* Wait for a Windows thread to complete. (BLOCKING)
- * Returns 0 on success, else error code. */
-int thread_wait(ThreadID *threadid)
+/* Wait for a thread on Windows to complete. (BLOCKING)
+ * Returns 0 on success, else GetLastError(). */
+static inline int thread_wait(ThreadID *threadid)
 {
    HANDLE hThread;
    int ecode = 0;
@@ -93,234 +114,144 @@ int thread_wait(ThreadID *threadid)
       ecode = GetLastError();
    /* close handle to thread */
    CloseHandle(hThread);
-   /* ensure thread id is clean */
-   *threadid = 0;
 
    return ecode;
 }
 
-/* Initialize a Windows Mutex and set initialized. Return 0.*/
-int mutex_init(Mutex *mutex)
+/* Initialize a Mutex on Windows and set initialized.
+ * Always returns 0 on Windows. */
+static inline int mutex_init(Mutex *mutex)
 {
-   /* initialize mutex */
+   /* initialize critical section inside Mutex */
    InitializeCriticalSection(&mutex->lock);
-   /* set mutex initialized */
+   /* set Mutex initialized */
    mutex->init = 1;
 
    return 0;
 }
 
-/* Acquire an exclusive (Mutex) lock between Windows threads.
- * Return 0. */
-int mutex_lock(Mutex *mutex)
+/* Acquire an exclusive lock on Windows.
+ * Always returns 0 on Windows. */
+static inline int mutex_lock(Mutex *mutex)
 {
-   /* Mutex initialization is guarded by an initialization lock
-    * which is 32-bit aligned as required by the Windows API
+   /* CRITICAL_SECTION initialization is guarded by an initialization
+    * lock which is 32-bit aligned as required by the Windows API's
     * InterlockedCompareExchange() atomic function. */
    __declspec(align(4)) static volatile LONG initlock = 0;
 
    /* initialize mutex if not already */
    if(!mutex->init) {
-      /* spin for exclusive init lock */
+      /* acquire exclusive spin lock access */
       while(InterlockedCompareExchange(&initlock, 1, 0));
-      if(!mutex->init) {
-         /* initialize mutex */
-         InitializeCriticalSection(&mutex->lock);
-         /* set mutex initialized */
-         mutex->init = 1;
-      }
-      /* release init lock access */
+      /* perform initialization if first */
+      if(!mutex->init)
+         mutex_init(mutex);
+      /* release spin lock access */
       initlock = 0;
    }
 
-   /* acquire exclusive lock */
+   /* acquire exclusive critical section lock */
    EnterCriticalSection(&mutex->lock);
 
    return 0;
 }
 
-/* Release an exclusive (Mutex) lock between Windows threads.
- * Return 0. */
-int mutex_unlock(Mutex *mutex)
+/* Release an exclusive lock on Windows.
+ * Always returns 0 on Windows. */
+static inline int mutex_unlock(Mutex *mutex)
 {
+   /* release exclusive critical section lock */
    LeaveCriticalSection(&mutex->lock);
 
    return 0;
 }
 
-/* Destroy a Windows Mutex and set uninitialized. Return 0. */
-int mutex_end(Mutex *mutex)
+/* Uninitalize a Mutex on Windows.
+ * Always returns 0 on Windows. */
+static inline int mutex_free(Mutex *mutex)
 {
-   /* destroy mutex */
+   /* destroy critical section */
    DeleteCriticalSection(&mutex->lock);
-   /* set mutex uninitialized */
+   /* set Mutex uninitialized */
    mutex->init = 0;
 
    return 0;
 }
 
-/* Initialize a Windows read/write lock. Return 0. */
-int rwlock_init(RWLock *rwlock)
-{
-   InitializeSRWLock(rwlock);
+/* Read write lock (RWLock) functions on Windows.
+ * Always returns 0 on Windows. */
+static inline int rwlock_init(RWLock *rwlock)
+{ InitializeSRWLock(rwlock); return 0; }
 
-   return 0;
-}
+static inline int rwlock_rdlock(RWLock *rwlock)
+{ AcquireSRWLockShared(rwlock); return 0; }
 
-/* Acquire a read lock (shared mode). Return 0. */
-int rwlock_rdlock(RWLock *rwlock)
-{
-   AcquireSRWLockShared(rwlock);
+static inline int rwlock_wrlock(RWLock *rwlock)
+{ AcquireSRWLockExclusive(rwlock); return 0; }
 
-   return 0;
-}
+static inline int rwlock_rdunlock(RWLock *rwlock)
+{ ReleaseSRWLockShared(rwlock); return 0; }
 
-/* Acquire a write lock (exclusive mode). Return 0. */
-int rwlock_wrlock(RWLock *rwlock)
-{
-   AcquireSRWLockExclusive(rwlock);
-
-   return 0;
-}
-
-/* Release a read lock. Return 0. */
-int rwlock_rdunlock(RWLock *rwlock)
-{
-   ReleaseSRWLockShared(rwlock);
-
-   return 0;
-}
-
-/* Release a write lock. Return 0. */
-int rwlock_wrunlock(RWLock *rwlock)
-{
-   ReleaseSRWLockExclusive(rwlock);
-
-   return 0;
-}
-
-/* SRW locks do not need to be explicitly destroyed. Therefore,
- * this function serves only as a placeholder for multiplatform
- * compatibility, always returning 0. */
-int rwlock_end(RWLock *rwlock) { (void *) rwlock; return 0; }
+static inline int rwlock_wrunlock(RWLock *rwlock)
+{ ReleaseSRWLockExclusive(rwlock); return 0; }
 
 
 #else /* end Windows */
 /*********************/
 
-/******************************************/
-/* ---------------- UNIX ---------------- */
+/*******************************************/
+/* ---------------- POSIX ---------------- */
 
 #include <pthread.h>
 
-#define Threaded              void*
-#define Treturn               NULL
-#define ThreadID              pthread_t
-#define Mutex                 pthread_mutex_t
-#define RWLock                pthread_rwlock_t
-#define MUTEX_INITIALIZER     PTHREAD_MUTEX_INITIALIZER
-#define RWLOCK_INITIALIZER    PTHREAD_RWLOCK_INITIALIZER
+/* POSIX function redefinitions... */
+   /* ... threading functions, return 0 on success else error code. */
+#define thread_create(tid,func,arg)  pthread_create(tid,NULL,func,arg)
+#define thread_wait(tid)             pthread_join(*(tid),NULL)  /* BLOCKING */
+   /* ... mutex lock functions, return 0 on success else error code. */
+#define mutex_init(m)    pthread_mutex_init(m,NULL)
+#define mutex_lock(m)    pthread_mutex_lock(m)  /* BLOCKING */
+#define mutex_unlock(m)  pthread_mutex_unlock(m)
+#define mutex_free(m)    pthread_mutex_destroy(m)
+   /* ... read write lock functions, return 0 on success else error code. */
+#define rwlock_init(rwl)      pthread_rwlock_init(rwl,NULL)
+#define rwlock_rdlock(rwl)    pthread_rwlock_rdlock(rwl)  /* BLOCKING */
+#define rwlock_wrlock(rwl)    pthread_rwlock_wrlock(rwl)  /* BLOCKING */
+#define rwlock_rdunlock(rwl)  pthread_rwlock_unlock(rwl)
+#define rwlock_wrunlock(rwl)  pthread_rwlock_unlock(rwl)
+#define rwlock_free(rwl)      pthread_rwlock_destroy(rwl)
 
-/* Create a new thread on UNIX and store it's thread id.
- * Return 0 on success, else error code. */
-int thread_create(ThreadID *threadid, void *func, void *arg)
-{ 
-   return pthread_create(threadid, NULL, func, arg);
-}
+/* POSIX static initializers */
+#define MUTEX_INITIALIZER   PTHREAD_MUTEX_INITIALIZER
+#define RWLOCK_INITIALIZER  PTHREAD_RWLOCK_INITIALIZER
 
-/* Wait for a UNIX thread to complete. (BLOCKING)
- * Returns 0 on success, else error code. */
-int thread_wait(ThreadID *threadid)
-{
-   int ecode;
-
-   /* wait (indefinitely) for thread to complete */
-   ecode = pthread_join(*threadid, NULL);
-   /* ensure thread id is clean */
-   *threadid = 0;
-
-   return ecode;
-}
-
-/* Initialize a UNIX Mutex. Return 0 on success, else error code. */
-int mutex_init(Mutex *mutex)
-{
-   return pthread_mutex_init(mutex, NULL);
-}
-
-/* Acquire an exclusive (Mutex) lock between UNIX threads.
- * Return 0 on success, else error code. */
-int mutex_lock(Mutex *mutex)
-{
-   return pthread_mutex_lock(mutex);
-}
-
-/* Release an exclusive (Mutex) lock between UNIX threads.
- * Return 0 on success, else error code. */
-int mutex_unlock(Mutex *mutex)
-{
-   return pthread_mutex_unlock(mutex);
-}
-
-/* Destroy a UNIX Mutex. Return 0 on success, else error code. */
-int mutex_end(Mutex *mutex)
-{
-   return pthread_mutex_destroy(mutex);
-}
-
-/* Initialize a Windows read/write lock. Return 0. */
-int rwlock_init(RWLock *rwlock)
-{
-   return pthread_rwlock_init(rwlock, NULL);
-}
-
-/* Acquire a shared read lock. Return 0. */
-int rwlock_rdlock(RWLock *rwlock)
-{
-   return pthread_rwlock_rdlock(rwlock);
-}
-
-/* Acquire an exclusive write lock. Return 0. */
-int rwlock_wrlock(RWLock *rwlock)
-{
-   return pthread_rwlock_wrlock(rwlock);
-}
-
-/* Release a read lock. Return 0. */
-int rwlock_rdunlock(RWLock *rwlock)
-{
-   return pthread_rwlock_unlock(rwlock);
-}
-
-/* Release a write lock. Return 0. */
-int rwlock_wrunlock(RWLock *rwlock)
-{
-   return pthread_rwlock_unlock(rwlock);
-}
-
-/* Destroy a read/write lock. Returns 0, else error code. */
-int rwlock_end(RWLock *rwlock)
-{
-   return pthread_rwlock_destroy(rwlock);
-}
+/* POSIX datatypes and structs */
+#define ThreadID  pthread_t         /* thread identification datatype */
+#define Threaded  void*             /* thread execution function datatype */
+#define Treturn   NULL              /* thread function return value */
+#define Mutex     pthread_mutex_t   /* mutually exclusive lock */
+#define RWLock    pthread_rwlock_t  /* shared read / exclusive write lock */
 
 
-#endif /* end UNIX */
-/*******************/
+#endif /* end POSIX */
+/********************/
 
-/* Thread structure containing the thread id, arg pointer and "done" flag.
- * Useful for obtaining thread state without performing a blocking
- * thread_wait() call. */
-typedef struct {
+/**********************************************************/
+/* ---------------- Platform independant ---------------- */
+
+/* Thread structure containing a thread id, argument pointer and "done"
+ * flag. Intended for obtaining thread state without performing a
+ * blocking thread_wait() call. */
+typedef struct _THREAD_CTX {
    ThreadID id;
    void *arg;
    unsigned char done;
-} THREAD;
+} THREAD_CTX;
 
 /* Wait for multiple threads to complete. (BLOCKING)
  * Expects a pointer to a `len` length array of thread id's.
  * Returns 0 on success, else the first error code. */
-int thread_multiwait(ThreadID *tidlist, int len)
+static inline int thread_multiwait(ThreadID *tidlist, int len)
 {
    int i, temp, ecode;
 
@@ -335,4 +266,4 @@ int thread_multiwait(ThreadID *tidlist, int len)
 }
 
 
-#endif /* end _THREAD_C_ */
+#endif /* end _MP_THREAD_H_ */

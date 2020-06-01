@@ -1,13 +1,24 @@
 @echo off
 cls
+::
+:: Testing makefile (Windows) to compile and test all *.c files.
+::  - makefile.bat (1 June 2020)
+::
+:: Original work Copyright (c) 2020 Zalamanda
+::
+:: Permission is hereby granted, free of charge, to any person obtaining a
+:: copy of this software and associated documentation files (the "Software"),
+:: to deal in the Software without restriction, including without limitation
+:: the rights to use, copy, modify, merge, publish, distribute, sublicense,
+:: and/or sell copies of the Software, and to permit persons to whom the
+:: Software is furnished to do so, subject to the following conditions:
+::
+:: The above copyright notice and this permission notice shall be included
+:: in all copies or substantial portions of the Software.
+::
 
-REM ################
-REM # Enable delayed expansion on script
-
-setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
-
-REM ################
-REM # Initialize environment
+::
+:: Initialize environment
 
 call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat"
 if %errorlevel% EQU 0 goto ENVOK
@@ -21,47 +32,46 @@ if %errorlevel% NEQ 0 (
 :ENVOK
 
 echo.
-echo   testWIN.bat - Multiplatform Utilities compilation and execution script
-echo                 thread.c, time.c
-echo.
 
-REM ################
-REM # Remove old error log
+::
+:: Remove old error log
 
-set LOG="mputilstest.log"
+set LOG="error.log"
 del /f /q %LOG% 1>NUL 2>&1
 
-REM ################
-REM # Build test software
+::
+:: Build test software
 
-echo | set /p="Building Multiplatform Utility tests... "
-cl /nologo /WX /Femputilstest.exe test\mputilstest.c >>%LOG% 2>&1
+for %%f in (*.c) do (
+   echo | set /p="Building %%~nf test... "
+   cl /nologo /WX /W4 /Fe%%~nf.exe %%~nf.c >>%LOG% 2>&1
+   if exist %%~nf.exe (
+      echo OK
 
-if %errorlevel% NEQ 0 (
-   echo Error
-   echo.
-   more %LOG%
-) else (
-   echo OK
-   echo.
-   echo Done.
+REM Run software on success
+      start "" /b /wait %%~nf.exe
 
-REM ################
-REM # Run software on success
-
-   start "" /b /wait "mputilstest.exe"
-
+   ) else (
+      echo Error
+      echo.
+      more %LOG%
+      goto CLEANUP
+   )
 )
 
-REM ################
-REM # Cleanup
+echo.
+echo Done.
 
-if exist "mputilstest.obj" del /f /q "mputilstest.obj"
-if exist %LOG% del /f /q %LOG%
-
-
-:END
-
+::
+:CLEANUP
 echo.
 pause
+
+if exist "*.exe" del /f /q *.exe
+if exist "*.obj" del /f /q *.obj
+if exist %LOG% del /f /q %LOG%
+
+::
+:END
+
 EXIT
