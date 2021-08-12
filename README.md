@@ -1,4 +1,6 @@
 # Multiplatform Utilities
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fchrisdigity%2Fmultiplatform-c-utils.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fchrisdigity%2Fmultiplatform-c-utils?ref=badge_shield)
+
 
 Convenient multiplatform utilities for C; including multithreading, mutex locks, read/write locks, millisecond sleep and high resolution milli/microsecond timestamp support.
 
@@ -52,3 +54,7 @@ make clean  # cleanup all binaries and compilation files
 ### More information
 
 See individual source files for descriptions of the file, usage notes, changelog, data type structures, compiler MACRO expansions, and function operations.
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fchrisdigity%2Fmultiplatform-c-utils.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fchrisdigity%2Fmultiplatform-c-utils?ref=badge_large)
